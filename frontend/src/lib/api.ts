@@ -99,7 +99,7 @@ export const movieApi = {
           data: {
             favorites: [],
             count: 0,
-            totalResults: 0,
+            totalResults: "0",
             currentPage: page,
             totalPages: 0,
           },
