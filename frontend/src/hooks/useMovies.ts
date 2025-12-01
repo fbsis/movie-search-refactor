@@ -153,10 +153,70 @@ export const useRemoveFromFavorites = () => {
 
   return useMutation({
     mutationFn: movieApi.removeFromFavorites,
-    // Simple approach: after a successful removal, refetch favorites so UI matches backend
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: favoritesQueryKeyRoot });
+    // Optimistic update: remove movie from cache without refetching
+    onMutate: async (imdbID: string): Promise<OptimisticContext> => {
+      await cancelMoviesQueries(queryClient);
+
+      // Snapshot previous state for potential rollback
+      const context = snapshotMoviesCache(queryClient);
+
+      // In search results: mark movie as not favorite in all queries
+      queryClient.setQueriesData<SearchMoviesResponse>(
+        { queryKey: searchQueryKeyRoot },
+        (old) => {
+          if (!old?.data?.movies) return old;
+          return {
+            ...old,
+            data: {
+              ...old.data,
+              movies: old.data.movies.map((movie) =>
+                movie.imdbID === imdbID
+                  ? { ...movie, isFavorite: false }
+                  : movie,
+              ),
+            },
+          };
+        },
+      );
+
+      // In favorites: remove movie from all pages
+      queryClient.setQueriesData<FavoritesResponse>(
+        { queryKey: favoritesQueryKeyRoot },
+        (old) => {
+          if (!old?.data) return old;
+
+          const filteredFavorites = old.data.favorites.filter(
+            (fav) => fav.imdbID !== imdbID,
+          );
+
+          const currentTotal = Number(old.data.totalResults ?? 0);
+          const newTotal = Math.max(0, currentTotal - 1);
+          
+          // Recalculate totalPages based on new total
+          // Backend uses pageSize = 10 as default
+          const pageSize = 10;
+          const newTotalPages = Math.ceil(newTotal / pageSize);
+
+          return {
+            ...old,
+            data: {
+              ...old.data,
+              favorites: filteredFavorites,
+              count: filteredFavorites.length,
+              totalResults: String(newTotal),
+              totalPages: newTotalPages,
+            },
+          };
+        },
+      );
+
+      return context;
     },
+    // Roll back in case of error
+    onError: (_error, _variables, context) => {
+      rollbackMoviesCache(queryClient, context);
+    },
+    // Do not refetch here to avoid extra network calls
     ...queryOptions,
   });
 };
