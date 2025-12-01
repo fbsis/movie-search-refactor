@@ -1,17 +1,33 @@
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
+import { NestFactory } from "@nestjs/core";
+import { AppModule } from "./app.module";
+import { ConfigService } from "@nestjs/config";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  // BUG: Hardcoded CORS origins, should use env vars
-  app.enableCors({
-    origin: ['http://localhost:3000'],
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    credentials: true,
-  });
-  // BUG: No error handling
-  await app.listen(process.env.PORT || 3001);
-  console.log(`Application is running on: ${await app.getUrl()}`);
-}
-bootstrap();
+  try {
+    const app = await NestFactory.create(AppModule);
+    const configService = app.get(ConfigService);
 
+    // CORS origins from environment variables
+    const corsOrigins = configService
+      .get<string>("CORS_ORIGINS", "http://localhost:3000")
+      .split(",")
+      .map((origin) => origin.trim());
+
+    app.enableCors({
+      origin: corsOrigins,
+      methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+      credentials: true,
+    });
+
+    const port = configService.get<number>("PORT", 3001);
+    await app.listen(port);
+    console.log(`Application is running on: ${await app.getUrl()}`);
+  } catch (error) {
+    console.error("Error starting the application:", error);
+    process.exit(1);
+  }
+}
+bootstrap().catch((error) => {
+  console.error("Fatal error during bootstrap:", error);
+  process.exit(1);
+});
