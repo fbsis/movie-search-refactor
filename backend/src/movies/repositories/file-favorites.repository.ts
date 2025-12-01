@@ -3,6 +3,10 @@ import * as fs from "fs";
 import * as path from "path";
 import { MovieDto } from "../dto/movie.dto";
 import { IFavoritesRepository } from "./favorites.repository.interface";
+import {
+  MovieAlreadyInFavoritesError,
+  FailedToSaveFavoritesError,
+} from "../errors";
 
 @Injectable()
 export class FileFavoritesRepository implements IFavoritesRepository {
@@ -46,7 +50,7 @@ export class FileFavoritesRepository implements IFavoritesRepository {
       fs.writeFileSync(this.filePath, JSON.stringify(data, null, 2), "utf-8");
     } catch (error) {
       console.error("Error writing favorites file:", error);
-      throw new Error("Failed to save favorites to file");
+      throw new FailedToSaveFavoritesError();
     }
   }
 
@@ -67,7 +71,7 @@ export class FileFavoritesRepository implements IFavoritesRepository {
     // Check if movie already exists
     const exists = favorites.some((fav) => fav.imdbID === movie.imdbID);
     if (exists) {
-      throw new Error("Movie already in favorites");
+      throw new MovieAlreadyInFavoritesError();
     }
 
     favorites.push(movie);

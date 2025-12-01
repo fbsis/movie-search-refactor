@@ -6,6 +6,10 @@ import type {
   SearchMoviesResult,
 } from "./omdb.repository.interface";
 import { MovieDto } from "../dto/movie.dto";
+import {
+  OmdbApiKeyMissingError,
+  FailedToSearchMoviesError,
+} from "../errors";
 
 @Injectable()
 export class OmdbRepository implements IOmdbRepository {
@@ -14,9 +18,7 @@ export class OmdbRepository implements IOmdbRepository {
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>("OMDB_API_KEY");
     if (!apiKey) {
-      throw new Error(
-        "OMDB_API_KEY environment variable is required. Please set it in your .env file.",
-      );
+      throw new OmdbApiKeyMissingError();
     }
     this.baseUrl = `http://www.omdbapi.com/?apikey=${apiKey}`;
   }
@@ -51,7 +53,7 @@ export class OmdbRepository implements IOmdbRepository {
       };
     } catch (error) {
       console.error("Error searching movies from OMDb API:", error);
-      throw new Error("Failed to search movies from external API");
+      throw new FailedToSearchMoviesError();
     }
   }
 }

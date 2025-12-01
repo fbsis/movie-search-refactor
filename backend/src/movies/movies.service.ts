@@ -1,10 +1,14 @@
-import { HttpException, HttpStatus, Injectable, Inject } from "@nestjs/common";
+import { Injectable, Inject } from "@nestjs/common";
 import { MovieDto } from "./dto/movie.dto";
 import { SearchMoviesQueryDto } from "./dto/search-movies-query.dto";
 import type { IFavoritesRepository } from "./repositories/favorites.repository.interface";
 import type { IOmdbRepository } from "./repositories/omdb.repository.interface";
 import { parseYear } from "./helpers/movie.helpers";
 import type { OmdbMovieResponse } from "./types/omdb.types";
+import {
+  MovieAlreadyInFavoritesError,
+  MovieNotFoundInFavoritesError,
+} from "./errors";
 
 @Injectable()
 export class MoviesService {
@@ -71,10 +75,7 @@ export class MoviesService {
         error instanceof Error &&
         error.message === "Movie already in favorites"
       ) {
-        throw new HttpException(
-          "Movie already in favorites",
-          HttpStatus.BAD_REQUEST,
-        );
+        throw new MovieAlreadyInFavoritesError();
       }
       throw error;
     }
@@ -84,10 +85,7 @@ export class MoviesService {
     // BUG: No validation that movieId is provided
     const deleted = await this.favoritesRepository.delete(movieId);
     if (!deleted) {
-      throw new HttpException(
-        "Movie not found in favorites",
-        HttpStatus.NOT_FOUND,
-      );
+      throw new MovieNotFoundInFavoritesError();
     }
 
     return {
