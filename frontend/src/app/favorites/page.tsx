@@ -115,6 +115,7 @@ const Favorites = () => {
                       movie={movie}
                       isFavorite={true}
                       onToggleFavorite={handleToggleFavorite}
+                      isLoading={removeFromFavorites.isPending || addToFavorites.isPending}
                     />
                   ))}
                 </div>
