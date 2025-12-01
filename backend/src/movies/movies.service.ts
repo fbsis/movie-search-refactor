@@ -4,13 +4,7 @@ import { SearchMoviesQueryDto } from "./dto/search-movies-query.dto";
 import type { IFavoritesRepository } from "./repositories/favorites.repository.interface";
 import type { IOmdbRepository } from "./repositories/omdb.repository.interface";
 import { parseYear } from "./helpers/movie.helpers";
-
-interface OmdbMovieResponse {
-  Title?: string;
-  Year?: string;
-  imdbID?: string;
-  Poster?: string;
-}
+import type { OmdbMovieResponse } from "./types/omdb.types";
 
 @Injectable()
 export class MoviesService {
@@ -21,39 +15,20 @@ export class MoviesService {
     private readonly omdbRepository: IOmdbRepository,
   ) {}
 
-  async searchMovies(queryDto: SearchMoviesQueryDto) {
-    const page = queryDto.page ?? 1;
-
-    // Error handling
-    try {
-      return this.omdbRepository.search(queryDto.q, page);
-    } catch (error) {
-      if (error instanceof HttpException) {
-        throw error;
-      }
-      throw new HttpException(
-        "Failed to search movies from external API",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
-
-  async getMovieByTitle(queryDto: SearchMoviesQueryDto) {
-    // Error handling
-    const response = await this.searchMovies(queryDto);
-
-    // Get current favorites from repository
-    const favorites = await this.favoritesRepository.findAll();
-
-    const formattedResponse = (
-      response.movies as unknown as OmdbMovieResponse[]
-    ).map((movie: OmdbMovieResponse) => {
-      // Case-insensitive comparison for imdbID
+  /**
+   * Transforms OMDb API movies to response format and enriches with favorite status
+   */
+  private enrichMoviesWithFavoriteStatus(
+    omdbMovies: OmdbMovieResponse[],
+    favorites: MovieDto[],
+  ) {
+    return omdbMovies.map((movie: OmdbMovieResponse) => {
       const movieImdbID = movie.imdbID || "";
       const isFavorite = favorites.some(
         (fav: MovieDto) =>
           fav.imdbID.toLowerCase() === movieImdbID.toLowerCase(),
       );
+
       return {
         title: movie.Title || "",
         imdbID: movieImdbID,
@@ -62,11 +37,20 @@ export class MoviesService {
         isFavorite,
       };
     });
+  }
+
+  async getMovieByTitle(queryDto: SearchMoviesQueryDto) {
+    const page = queryDto.page ?? 1;
+    const response = await this.omdbRepository.search(queryDto.q, page);
+    const favorites = await this.favoritesRepository.findAll();
+
+    const omdbMovies = response.movies as unknown as OmdbMovieResponse[];
+    const movies = this.enrichMoviesWithFavoriteStatus(omdbMovies, favorites);
 
     return {
       data: {
-        movies: formattedResponse,
-        count: formattedResponse.length,
+        movies,
+        count: movies.length,
         totalResults: response.totalResults,
       },
     };
