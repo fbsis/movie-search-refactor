@@ -22,4 +22,3 @@ import { OmdbRepository } from "./repositories/omdb.repository";
   ],
 })
 export class MoviesModule {}
-

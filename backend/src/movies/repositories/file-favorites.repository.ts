@@ -93,4 +93,3 @@ export class FileFavoritesRepository implements IFavoritesRepository {
     return Promise.resolve(movie !== null);
   }
 }
-

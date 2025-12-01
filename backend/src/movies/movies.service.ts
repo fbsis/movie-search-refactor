@@ -24,16 +24,16 @@ export class MoviesService {
     // Get current favorites from repository
     const favorites = await this.favoritesRepository.findAll();
 
-    const formattedResponse = response.movies.map((movie: any) => {
+    const formattedResponse = response.movies.map((movie: MovieDto) => {
       // BUG: Case-sensitive comparison - some IDs might have different casing
       const isFavorite = favorites.some(
-        (fav) => fav.imdbID === movie.imdbID,
+        (fav: MovieDto) => fav.imdbID === movie.imdbID,
       );
       return {
-        title: movie.Title,
+        title: movie.title,
         imdbID: movie.imdbID,
-        year: movie.Year, // BUG: Should parse to number, also handles "1999-2000" format incorrectly
-        poster: movie.Poster,
+        year: movie.year, // BUG: Should parse to number, also handles "1999-2000" format incorrectly
+        poster: movie.poster,
         isFavorite,
       };
     });
@@ -58,7 +58,10 @@ export class MoviesService {
         },
       };
     } catch (error) {
-      if (error instanceof Error && error.message === "Movie already in favorites") {
+      if (
+        error instanceof Error &&
+        error.message === "Movie already in favorites"
+      ) {
         throw new HttpException(
           "Movie already in favorites",
           HttpStatus.BAD_REQUEST,

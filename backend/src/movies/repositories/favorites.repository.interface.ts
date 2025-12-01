@@ -7,4 +7,3 @@ export interface IFavoritesRepository {
   delete(id: string): Promise<boolean>;
   exists(id: string): Promise<boolean>;
 }
-
