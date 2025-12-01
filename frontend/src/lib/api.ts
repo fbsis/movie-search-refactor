@@ -1,7 +1,7 @@
 import { Movie, SearchMoviesResponse, FavoritesResponse } from '@/types/movie';
 
-// BUG: Hardcoded API URL, should use env var
-const API_BASE_URL = 'http://localhost:3001/movies';
+// Use environment variable with fallback for development
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/movies';
 
 /**
  * Movie data that can come in different formats
