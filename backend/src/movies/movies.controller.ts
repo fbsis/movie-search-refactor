@@ -9,42 +9,32 @@ import {
 } from "@nestjs/common";
 import { MoviesService } from "./movies.service";
 import { MovieDto } from "./dto/movie.dto";
+import { SearchMoviesQueryDto } from "./dto/search-movies-query.dto";
+import { GetFavoritesQueryDto } from "./dto/get-favorites-query.dto";
+import { MovieParamDto } from "./dto/movie-param.dto";
 
 @Controller("movies")
 export class MoviesController {
   constructor(private readonly moviesService: MoviesService) {}
 
   @Get("search")
-  async searchMovies(@Query("q") query: string, @Query("page") page?: string) {
-    // BUG: Not validating query parameter
-    // BUG: Not handling missing query - will pass undefined to service
-    // BUG: If query is empty string, service will make API call with empty search
-    const pageNumber = page ? parseInt(page, 10) : 1;
-    // BUG: No validation that pageNumber is valid (NaN, negative, or 0)
-    // BUG: If page is "abc", parseInt returns NaN and service receives NaN
-    return await this.moviesService.getMovieByTitle(query, pageNumber);
+  async searchMovies(@Query() queryDto: SearchMoviesQueryDto) {
+    return await this.moviesService.getMovieByTitle(queryDto);
   }
 
   @Post("favorites")
   async addToFavorites(@Body() movieToAdd: MovieDto) {
-    // BUG: No validation decorators
-    // BUG: Not checking if movieToAdd is null/undefined
     return this.moviesService.addToFavorites(movieToAdd);
   }
 
   @Delete("favorites/:imdbID")
-  async removeFromFavorites(@Param("imdbID") imdbID: string) {
-    // BUG: No validation
-    return this.moviesService.removeFromFavorites(imdbID);
+  async removeFromFavorites(@Param() params: MovieParamDto) {
+    return this.moviesService.removeFromFavorites(params.imdbID);
   }
 
   @Get("favorites/list")
-  async getFavorites(@Query("page") page?: string) {
-    // BUG: No error handling if page is invalid
-    // BUG: If page is "0" or negative, service will return wrong results
-    // BUG: If page is "abc", parseInt returns NaN, service receives NaN
-    const pageNumber = page ? parseInt(page, 10) : 1;
-    // BUG: Not handling case where service throws HttpException for empty favorites
+  async getFavorites(@Query() queryDto: GetFavoritesQueryDto) {
+    const pageNumber = queryDto.page || 1;
     return this.moviesService.getFavorites(pageNumber);
   }
 }

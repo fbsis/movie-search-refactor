@@ -1,5 +1,6 @@
 import { HttpException, HttpStatus, Injectable, Inject } from "@nestjs/common";
 import { MovieDto } from "./dto/movie.dto";
+import { SearchMoviesQueryDto } from "./dto/search-movies-query.dto";
 import type { IFavoritesRepository } from "./repositories/favorites.repository.interface";
 import type { IOmdbRepository } from "./repositories/omdb.repository.interface";
 
@@ -12,14 +13,26 @@ export class MoviesService {
     private readonly omdbRepository: IOmdbRepository,
   ) {}
 
-  async searchMovies(title: string, page: number = 1) {
-    // BUG: No input validation, no error handling
-    return await this.omdbRepository.search(title, page);
+  async searchMovies(queryDto: SearchMoviesQueryDto) {
+    const page = queryDto.page ?? 1;
+
+    // Error handling
+    try {
+      return this.omdbRepository.search(queryDto.q, page);
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        "Failed to search movies from external API",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
-  async getMovieByTitle(title: string, page: number = 1) {
-    // BUG: No try-catch, will crash on API errors
-    const response = await this.searchMovies(title, page);
+  async getMovieByTitle(queryDto: SearchMoviesQueryDto) {
+    // Error handling
+    const response = await this.searchMovies(queryDto);
 
     // Get current favorites from repository
     const favorites = await this.favoritesRepository.findAll();
@@ -30,10 +43,10 @@ export class MoviesService {
         (fav: MovieDto) => fav.imdbID === movie.imdbID,
       );
       return {
-        title: movie.title,
+        title: movie.Title,
         imdbID: movie.imdbID,
-        year: movie.year, // BUG: Should parse to number, also handles "1999-2000" format incorrectly
-        poster: movie.poster,
+        year: movie.Year, // BUG: Should parse to number, also handles "1999-2000" format incorrectly
+        poster: movie.Poster,
         isFavorite,
       };
     });
