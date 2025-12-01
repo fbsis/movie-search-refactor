@@ -1,14 +1,27 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { movieApi } from '@/lib/api';
 
-// BUG: Missing proper TypeScript types
-export const useSearchMovies = (query: string, page: number = 1, enabled: boolean = false) => {
+const queryOptions = {
+  retry: 2, // Retry failed requests up to 2 times
+  retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 30000), // Exponential backoff
+  staleTime: 5 * 60 * 1000, // Consider data fresh for 5 minutes
+  gcTime: 10 * 60 * 1000, // Keep unused data in cache for 10 minutes
+  throwOnError: false, // Don't throw errors, return them in the error property
+};
+
+const invalidateFavoritesQueryKeys = ['movies', 'favorites'];
+const invalidateSearchQueryKeys = ['movies', 'search'];
+
+export const useSearchMovies = (
+  query: string,
+  page: number = 1,
+  enabled: boolean = false,
+) => {
   return useQuery({
     queryKey: ['movies', 'search', query, page],
     queryFn: () => movieApi.searchMovies(query, page),
-    enabled: enabled && query.length > 0,
-    // BUG: No error handling configuration
-    // BUG: No retry configuration
+    enabled: enabled && query.trim().length > 0,
+    ...queryOptions,
   });
 };
 
@@ -16,10 +29,7 @@ export const useFavorites = (page: number = 1) => {
   return useQuery({
     queryKey: ['movies', 'favorites', page],
     queryFn: () => movieApi.getFavorites(page),
-    // BUG: No error handling - will crash on 404
-    // BUG: Should handle empty favorites gracefully
-    // BUG: No retry logic - if backend throws 404 for empty list, query fails permanently
-    // BUG: Query doesn't refetch when favorites are added/removed from other components
+    ...queryOptions,
   });
 };
 
@@ -29,13 +39,10 @@ export const useAddToFavorites = () => {
   return useMutation({
     mutationFn: movieApi.addToFavorites,
     onSuccess: () => {
-      // BUG: Inefficient - invalidating all queries
-      // BUG: Invalidates search queries too, causing unnecessary refetches
-      // BUG: Should only invalidate favorites list and current search results
-      queryClient.invalidateQueries({ queryKey: ['movies'] });
+      queryClient.invalidateQueries({ queryKey: invalidateFavoritesQueryKeys });
+      queryClient.invalidateQueries({ queryKey: invalidateSearchQueryKeys });
     },
-    // BUG: No error handling
-    // BUG: If backend returns HttpException object (not thrown), mutation succeeds but UI doesn't update
+    ...queryOptions,
   });
 };
 
@@ -45,10 +52,10 @@ export const useRemoveFromFavorites = () => {
   return useMutation({
     mutationFn: movieApi.removeFromFavorites,
     onSuccess: () => {
-      // BUG: Inefficient - invalidating all queries
-      queryClient.invalidateQueries({ queryKey: ['movies'] });
+      queryClient.invalidateQueries({ queryKey: invalidateFavoritesQueryKeys });
+      queryClient.invalidateQueries({ queryKey: invalidateSearchQueryKeys });
     },
-    // BUG: No error handling
+    ...queryOptions,
   });
 };
 
