@@ -3,6 +3,14 @@ import { MovieDto } from "./dto/movie.dto";
 import { SearchMoviesQueryDto } from "./dto/search-movies-query.dto";
 import type { IFavoritesRepository } from "./repositories/favorites.repository.interface";
 import type { IOmdbRepository } from "./repositories/omdb.repository.interface";
+import { parseYear } from "./helpers/movie.helpers";
+
+interface OmdbMovieResponse {
+  Title?: string;
+  Year?: string;
+  imdbID?: string;
+  Poster?: string;
+}
 
 @Injectable()
 export class MoviesService {
@@ -37,16 +45,20 @@ export class MoviesService {
     // Get current favorites from repository
     const favorites = await this.favoritesRepository.findAll();
 
-    const formattedResponse = response.movies.map((movie: MovieDto) => {
-      // BUG: Case-sensitive comparison - some IDs might have different casing
+    const formattedResponse = (
+      response.movies as unknown as OmdbMovieResponse[]
+    ).map((movie: OmdbMovieResponse) => {
+      // Case-insensitive comparison for imdbID
+      const movieImdbID = movie.imdbID || "";
       const isFavorite = favorites.some(
-        (fav: MovieDto) => fav.imdbID === movie.imdbID,
+        (fav: MovieDto) =>
+          fav.imdbID.toLowerCase() === movieImdbID.toLowerCase(),
       );
       return {
-        title: movie.Title,
-        imdbID: movie.imdbID,
-        year: movie.Year, // BUG: Should parse to number, also handles "1999-2000" format incorrectly
-        poster: movie.Poster,
+        title: movie.Title || "",
+        imdbID: movieImdbID,
+        year: parseYear(movie.Year),
+        poster: movie.Poster || "",
         isFavorite,
       };
     });
