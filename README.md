@@ -28,6 +28,7 @@ Your task is to identify and fix bugs, refactor code, and improve the overall qu
    ```
    OMDB_API_KEY=your_api_key_here
    PORT=3001
+   CORS_ORIGINS=http://localhost:3000,https://your-domain.com
    ```
    Start the backend:
    ```bash
