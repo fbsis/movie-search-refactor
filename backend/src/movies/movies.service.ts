@@ -1,43 +1,20 @@
 import { HttpException, HttpStatus, Injectable, Inject } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
 import { MovieDto } from "./dto/movie.dto";
-import axios from "axios";
 import type { IFavoritesRepository } from "./repositories/favorites.repository.interface";
+import type { IOmdbRepository } from "./repositories/omdb.repository.interface";
 
 @Injectable()
 export class MoviesService {
-  private readonly baseUrl: string;
-
   constructor(
-    private readonly configService: ConfigService,
     @Inject("IFavoritesRepository")
     private readonly favoritesRepository: IFavoritesRepository,
-  ) {
-    const apiKey = this.configService.get<string>("OMDB_API_KEY");
-    if (!apiKey) {
-      throw new Error(
-        "OMDB_API_KEY environment variable is required. Please set it in your .env file.",
-      );
-    }
-    this.baseUrl = `http://www.omdbapi.com/?apikey=${apiKey}`;
-  }
+    @Inject("IOmdbRepository")
+    private readonly omdbRepository: IOmdbRepository,
+  ) {}
 
-  async searchMovies(title: string, page: number = 1): Promise<any> {
+  async searchMovies(title: string, page: number = 1) {
     // BUG: No input validation, no error handling
-    const response = await axios.get(
-      `${this.baseUrl}&s=${title}&plot=full&page=${page}`, // BUG: Missing encodeURIComponent
-    );
-
-    // BUG: OMDb API returns Response: "False" (string) when no results, not a boolean
-    // This check will fail silently - Response field is always a string
-    if (response.data.Response === false || response.data.Error) {
-      return { movies: [], totalResults: "0" };
-    }
-
-    return {
-      movies: response.data.Search || [],
-      totalResults: response.data.totalResults || "0",
-    };
+    return await this.omdbRepository.search(title, page);
   }
 
   async getMovieByTitle(title: string, page: number = 1) {
