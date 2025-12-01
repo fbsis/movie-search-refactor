@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import MovieCard from "@/components/MovieCard";
 import Pagination from "@/components/pagination";
 
@@ -11,40 +11,57 @@ import Link from "next/link";
 
 const Favorites = () => {
   const [currentPage, setCurrentPage] = useState(1);
-  // BUG: No error handling - will crash if API returns 404
-  const { data: favorites } = useFavorites(currentPage);
+  const { data: favorites, isLoading, error } = useFavorites(currentPage);
   
   const addToFavorites = useAddToFavorites();
   const removeFromFavorites = useRemoveFromFavorites();
-  
-  const handleToggleFavorite = async (movie: Movie) => {
-    // BUG: Inefficient check - should use useMemo
-    // BUG: This check is redundant - all movies on favorites page are favorites
-    // BUG: Logic is inverted - if on favorites page, should always remove
-    const isFavorite = favorites?.data.favorites.some(fav => fav.imdbID === movie.imdbID) ?? false;
-    // BUG: No error handling
-    // BUG: If remove fails, movie stays in list but might be removed from backend
-    if (isFavorite) {
-      await removeFromFavorites.mutateAsync(movie.imdbID);
-      // BUG: After removal, if on last page and it becomes empty, should navigate to previous page
-    } else {
-      await addToFavorites.mutateAsync(movie);
-    }
-  };
 
-  const handlePageChange = (page: number) => {
-    // BUG: Type mismatch - totalResults might be number instead of string
-    if (page >= 1 && page <= (favorites?.data.totalPages || 1)) {
-      setCurrentPage(page);
+  // Parse totalResults safely - handle both string and number types
+  const totalResults = useMemo(() => {
+    if (!favorites?.data?.totalResults) {
+      return 0;
+    }
+    const total = favorites.data.totalResults;
+    return typeof total === 'string' ? parseInt(total, 10) : total;
+  }, [favorites?.data?.totalResults]);
+
+  // Get totalPages safely
+  const totalPages = favorites?.data?.totalPages ?? 0;
+  
+  const handleToggleFavorite = useCallback(async (movie: Movie) => {
+    // On favorites page, we always remove (all movies here are favorites)
+    // Prevent multiple rapid calls
+    if (removeFromFavorites.isPending || addToFavorites.isPending) {
+      return;
+    }
+
+    try {
+      await removeFromFavorites.mutateAsync(movie.imdbID);
+      
+      // After removal, if current page becomes empty and we're not on page 1, navigate to previous page
+      const remainingOnPage = (favorites?.data.favorites.length ?? 0) - 1;
+      if (remainingOnPage === 0 && currentPage > 1) {
+        setCurrentPage(prev => Math.max(1, prev - 1));
+      }
+    } catch (error) {
+      // Error handling: log error and show user-friendly message
+      console.error('Failed to remove favorite:', error);
+      // In a real app, you might want to show a toast notification here
+    }
+  }, [removeFromFavorites, addToFavorites, favorites?.data.favorites.length, currentPage]);
+
+  const handlePageChange = useCallback((page: number) => {
+    // Validate page number
+    if (!Number.isInteger(page) || page < 1 || page > totalPages) {
+      return;
+    }
+    setCurrentPage(page);
+    
+    // Check if window is available (browser environment)
+    if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
-  };
-  
-  // BUG: Will crash if favorites is undefined
-  // BUG: totalResults might be number (from backend bug) or string - toString() might fail
-  // BUG: If backend returns number, toString() works but parseInt is redundant
-  // BUG: If backend returns string, parseInt works but toString() is unnecessary
-  const totalResults = parseInt(favorites?.data.totalResults.toString() || '0');
+  }, [totalPages]);
   
   return (
     <div className="min-h-screen bg-gradient-hero">
@@ -60,39 +77,56 @@ const Favorites = () => {
           </p>
         </div>
 
-        {totalResults === 0 ? (
+        {isLoading && (
           <div className="text-center py-12">
-            <h2 className="text-2xl font-semibold mb-2">No Favorites Yet</h2>
-            <p className="text-muted-foreground mb-6">
-              Start adding movies to your favorites from the search page
-            </p>
-            <Link href="/">
-              <Button className="bg-gradient-primary">
-                Search Movies
-              </Button>
-            </Link>
+            <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-primary border-r-transparent" />
+            <p className="mt-4 text-muted-foreground">Loading favorites...</p>
           </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-              {/* BUG: No loading state */}
-              {favorites?.data.favorites.map((movie) => (
-                <MovieCard
-                  key={movie.imdbID}
-                  movie={movie}
-                  isFavorite={true}
-                  onToggleFavorite={handleToggleFavorite}
-                />
-              ))}
-            </div>
+        )}
 
-            {/* BUG: Complex conditional */}
-            {favorites?.data.totalPages && favorites.data.totalPages > 1 && (
-              <Pagination
-                currentPage={currentPage}
-                totalPages={favorites.data.totalPages}
-                onPageChange={handlePageChange}
-              />
+        {error && (
+          <div className="text-center py-12">
+            <p className="text-xl text-red-500">
+              Error loading favorites. Please try again.
+            </p>
+          </div>
+        )}
+
+        {!isLoading && !error && (
+          <>
+            {totalResults === 0 ? (
+              <div className="text-center py-12">
+                <h2 className="text-2xl font-semibold mb-2">No Favorites Yet</h2>
+                <p className="text-muted-foreground mb-6">
+                  Start adding movies to your favorites from the search page
+                </p>
+                <Link href="/">
+                  <Button className="bg-gradient-primary">
+                    Search Movies
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                  {favorites?.data.favorites.map((movie) => (
+                    <MovieCard
+                      key={movie.imdbID}
+                      movie={movie}
+                      isFavorite={true}
+                      onToggleFavorite={handleToggleFavorite}
+                    />
+                  ))}
+                </div>
+
+                {totalPages > 1 && (
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    onPageChange={handlePageChange}
+                  />
+                )}
+              </>
             )}
           </>
         )}
