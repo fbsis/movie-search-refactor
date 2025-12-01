@@ -6,10 +6,7 @@ import type {
   SearchMoviesResult,
 } from "./omdb.repository.interface";
 import { MovieDto } from "../dto/movie.dto";
-import {
-  OmdbApiKeyMissingError,
-  FailedToSearchMoviesError,
-} from "../errors";
+import { OmdbApiKeyMissingError, FailedToSearchMoviesError } from "../errors";
 
 @Injectable()
 export class OmdbRepository implements IOmdbRepository {
