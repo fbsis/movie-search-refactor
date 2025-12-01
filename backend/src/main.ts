@@ -1,17 +1,62 @@
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
+import { NestFactory } from "@nestjs/core";
+import { AppModule } from "./app.module";
+import { ConfigService } from "@nestjs/config";
+import { ValidationPipe } from "@nestjs/common";
+import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  // BUG: Hardcoded CORS origins, should use env vars
-  app.enableCors({
-    origin: ['http://localhost:3000'],
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    credentials: true,
-  });
-  // BUG: No error handling
-  await app.listen(process.env.PORT || 3001);
-  console.log(`Application is running on: ${await app.getUrl()}`);
-}
-bootstrap();
+  try {
+    const app = await NestFactory.create(AppModule);
+    const configService = app.get(ConfigService);
 
+    // Enable validation pipe globally
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+        transformOptions: {
+          enableImplicitConversion: true,
+        },
+      }),
+    );
+
+    // Configure Swagger (OpenAPI) documentation
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle("Movie Search API")
+      .setDescription(
+        "API documentation for the movie search and favorites service.",
+      )
+      .setVersion("1.0.0")
+      .build();
+
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup("api-docs", app, document);
+
+    // CORS origins from environment variables
+    const corsOrigins = configService
+      .get<string>("CORS_ORIGINS", "http://localhost:3000")
+      .split(",")
+      .map((origin) => origin.trim());
+
+    app.enableCors({
+      origin: corsOrigins,
+      methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+      credentials: true,
+    });
+
+    const port = configService.get<number>("PORT", 3001);
+    await app.listen(port);
+    console.log(`Application is running on: ${await app.getUrl()}`);
+    console.log(
+      `Swagger documentation is available at: ${await app.getUrl()}/api-docs`,
+    );
+  } catch (error) {
+    console.error("Error starting the application:", error);
+    process.exit(1);
+  }
+}
+bootstrap().catch((error) => {
+  console.error("Fatal error during bootstrap:", error);
+  process.exit(1);
+});

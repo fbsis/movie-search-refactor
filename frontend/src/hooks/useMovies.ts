@@ -1,54 +1,223 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { movieApi } from '@/lib/api';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { movieApi } from "@/lib/api";
+import type {
+  Movie,
+  SearchMoviesResponse,
+  FavoritesResponse,
+} from "@/types/movie";
 
-// BUG: Missing proper TypeScript types
-export const useSearchMovies = (query: string, page: number = 1, enabled: boolean = false) => {
+const queryOptions = {
+  retry: 2,
+  retryDelay: (attemptIndex: number) =>
+    Math.min(1000 * 2 ** attemptIndex, 30000),
+  staleTime: 5 * 60 * 1000,
+  gcTime: 10 * 60 * 1000,
+  throwOnError: false,
+};
+
+const favoritesQueryKeyRoot = ["movies", "favorites"] as const;
+const searchQueryKeyRoot = ["movies", "search"] as const;
+
+type SearchCacheEntry = [unknown, SearchMoviesResponse | undefined];
+type FavoritesCacheEntry = [unknown, FavoritesResponse | undefined];
+
+interface OptimisticContext {
+  previousSearch: SearchCacheEntry[];
+  previousFavorites: FavoritesCacheEntry[];
+}
+
+const cancelMoviesQueries = async (queryClient: ReturnType<typeof useQueryClient>) => {
+  await queryClient.cancelQueries({ queryKey: searchQueryKeyRoot });
+  await queryClient.cancelQueries({ queryKey: favoritesQueryKeyRoot });
+};
+
+const snapshotMoviesCache = (queryClient: ReturnType<typeof useQueryClient>): OptimisticContext => ({
+  previousSearch: queryClient.getQueriesData<SearchMoviesResponse>({
+    queryKey: searchQueryKeyRoot,
+  }),
+  previousFavorites: queryClient.getQueriesData<FavoritesResponse>({
+    queryKey: favoritesQueryKeyRoot,
+  }),
+});
+
+const rollbackMoviesCache = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  context?: OptimisticContext | null,
+) => {
+  if (!context) return;
+
+  context.previousSearch.forEach(([key, data]) => {
+    queryClient.setQueryData(key as readonly unknown[], data);
+  });
+  context.previousFavorites.forEach(([key, data]) => {
+    queryClient.setQueryData(key as readonly unknown[], data);
+  });
+};
+
+export const useSearchMovies = (
+  query: string,
+  page: number = 1,
+  enabled: boolean = false,
+) => {
   return useQuery({
-    queryKey: ['movies', 'search', query, page],
+    queryKey: ["movies", "search", query, page],
     queryFn: () => movieApi.searchMovies(query, page),
-    enabled: enabled && query.length > 0,
-    // BUG: No error handling configuration
-    // BUG: No retry configuration
+    enabled: enabled && query.trim().length > 0,
+    ...queryOptions,
   });
 };
 
 export const useFavorites = (page: number = 1) => {
   return useQuery({
-    queryKey: ['movies', 'favorites', page],
+    queryKey: ["movies", "favorites", page],
     queryFn: () => movieApi.getFavorites(page),
-    // BUG: No error handling - will crash on 404
-    // BUG: Should handle empty favorites gracefully
-    // BUG: No retry logic - if backend throws 404 for empty list, query fails permanently
-    // BUG: Query doesn't refetch when favorites are added/removed from other components
+    ...queryOptions,
   });
 };
 
 export const useAddToFavorites = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: movieApi.addToFavorites,
-    onSuccess: () => {
-      // BUG: Inefficient - invalidating all queries
-      // BUG: Invalidates search queries too, causing unnecessary refetches
-      // BUG: Should only invalidate favorites list and current search results
-      queryClient.invalidateQueries({ queryKey: ['movies'] });
+    // Optimistic update: update search and favorites cache without refetching
+    onMutate: async (movieToAdd: Movie): Promise<OptimisticContext> => {
+      await cancelMoviesQueries(queryClient);
+
+      // Snapshot previous state for potential rollback
+      const context = snapshotMoviesCache(queryClient);
+
+      // In search results: mark movie as favorite in all queries
+      queryClient.setQueriesData<SearchMoviesResponse>(
+        { queryKey: searchQueryKeyRoot },
+        (old) => {
+          if (!old?.data?.movies) return old;
+          return {
+            ...old,
+            data: {
+              ...old.data,
+              movies: old.data.movies.map((movie) =>
+                movie.imdbID === movieToAdd.imdbID
+                  ? { ...movie, isFavorite: true }
+                  : movie,
+              ),
+            },
+          };
+        },
+      );
+
+      // In favorites: add movie to the current page (typically page 1)
+      queryClient.setQueriesData<FavoritesResponse>(
+        { queryKey: favoritesQueryKeyRoot },
+        (old) => {
+          if (!old?.data) return old;
+
+          const isPageOne = old.data.currentPage === 1;
+          const existingFavorites = old.data.favorites ?? [];
+
+          // Avoid duplicates
+          const filtered = existingFavorites.filter(
+            (fav) => fav.imdbID !== movieToAdd.imdbID,
+          );
+          const newFavorites = isPageOne
+            ? [movieToAdd, ...filtered]
+            : existingFavorites;
+
+          const currentTotal = Number(old.data.totalResults ?? 0);
+
+          return {
+            ...old,
+            data: {
+              ...old.data,
+              favorites: newFavorites,
+              count: newFavorites.length,
+              totalResults: String(currentTotal + 1),
+            },
+          };
+        },
+      );
+
+      return context;
     },
-    // BUG: No error handling
-    // BUG: If backend returns HttpException object (not thrown), mutation succeeds but UI doesn't update
+    // Roll back in case of error
+    onError: (_error, _variables, context) => {
+      rollbackMoviesCache(queryClient, context);
+    },
+    // Do not refetch here to avoid extra network calls
+    ...queryOptions,
   });
 };
 
 export const useRemoveFromFavorites = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: movieApi.removeFromFavorites,
-    onSuccess: () => {
-      // BUG: Inefficient - invalidating all queries
-      queryClient.invalidateQueries({ queryKey: ['movies'] });
+    // Optimistic update: remove movie from cache without refetching
+    onMutate: async (imdbID: string): Promise<OptimisticContext> => {
+      await cancelMoviesQueries(queryClient);
+
+      // Snapshot previous state for potential rollback
+      const context = snapshotMoviesCache(queryClient);
+
+      // In search results: mark movie as not favorite in all queries
+      queryClient.setQueriesData<SearchMoviesResponse>(
+        { queryKey: searchQueryKeyRoot },
+        (old) => {
+          if (!old?.data?.movies) return old;
+          return {
+            ...old,
+            data: {
+              ...old.data,
+              movies: old.data.movies.map((movie) =>
+                movie.imdbID === imdbID
+                  ? { ...movie, isFavorite: false }
+                  : movie,
+              ),
+            },
+          };
+        },
+      );
+
+      // In favorites: remove movie from all pages
+      queryClient.setQueriesData<FavoritesResponse>(
+        { queryKey: favoritesQueryKeyRoot },
+        (old) => {
+          if (!old?.data) return old;
+
+          const filteredFavorites = old.data.favorites.filter(
+            (fav) => fav.imdbID !== imdbID,
+          );
+
+          const currentTotal = Number(old.data.totalResults ?? 0);
+          const newTotal = Math.max(0, currentTotal - 1);
+          
+          // Recalculate totalPages based on new total
+          // Backend uses pageSize = 10 as default
+          const pageSize = 10;
+          const newTotalPages = Math.ceil(newTotal / pageSize);
+
+          return {
+            ...old,
+            data: {
+              ...old.data,
+              favorites: filteredFavorites,
+              count: filteredFavorites.length,
+              totalResults: String(newTotal),
+              totalPages: newTotalPages,
+            },
+          };
+        },
+      );
+
+      return context;
     },
-    // BUG: No error handling
+    // Roll back in case of error
+    onError: (_error, _variables, context) => {
+      rollbackMoviesCache(queryClient, context);
+    },
+    // Do not refetch here to avoid extra network calls
+    ...queryOptions,
   });
 };
 

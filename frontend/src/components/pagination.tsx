@@ -22,17 +22,30 @@ const Pagination = ({ currentPage, totalPages, onPageChange }: PaginationProps) 
   const maxVisiblePages = 5;
   const halfVisible = Math.floor(maxVisiblePages / 2);
 
+  // Calculate start and end pages for visible range
+  // Ensure we show maxVisiblePages pages when possible, centered around currentPage
   let startPage = Math.max(1, currentPage - halfVisible);
   const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
 
-  // BUG: Complex logic, could be simplified
-  if (endPage - startPage + 1 < maxVisiblePages) {
+  // Adjust start page if we're near the end and can show more pages
+  if (endPage - startPage < maxVisiblePages - 1) {
     startPage = Math.max(1, endPage - maxVisiblePages + 1);
   }
 
   const pages = Array.from(
     { length: endPage - startPage + 1 },
     (_, i) => startPage + i
+  );
+
+  // Helper function to render page button
+  const renderPageButton = (page: number, isActive: boolean) => (
+    <Button
+      variant={isActive ? "default" : "secondary"}
+      onClick={() => onPageChange(page)}
+      className={isActive ? "bg-gradient-primary" : ""}
+    >
+      {page}
+    </Button>
   );
 
   return (
@@ -46,19 +59,17 @@ const Pagination = ({ currentPage, totalPages, onPageChange }: PaginationProps) 
         <ChevronLeft className="h-4 w-4" />
       </Button>
 
-      {/* BUG: Complex conditional rendering */}
+      {/* Render first page and ellipsis if needed */}
       {startPage > 1 && (
         <>
-          <Button
-            variant="secondary"
-            onClick={() => onPageChange(1)}
-          >
-            1
-          </Button>
-          {startPage > 2 && <span className="text-muted-foreground">...</span>}
+          {renderPageButton(1, currentPage === 1)}
+          {startPage > 2 && (
+            <span className="text-muted-foreground px-2">...</span>
+          )}
         </>
       )}
 
+      {/* Render visible page numbers */}
       {pages.map((page) => (
         <Button
           key={page}
@@ -70,15 +81,13 @@ const Pagination = ({ currentPage, totalPages, onPageChange }: PaginationProps) 
         </Button>
       ))}
 
+      {/* Render last page and ellipsis if needed */}
       {endPage < totalPages && (
         <>
-          {endPage < totalPages - 1 && <span className="text-muted-foreground">...</span>}
-          <Button
-            variant="secondary"
-            onClick={() => onPageChange(totalPages)}
-          >
-            {totalPages}
-          </Button>
+          {endPage < totalPages - 1 && (
+            <span className="text-muted-foreground px-2">...</span>
+          )}
+          {renderPageButton(totalPages, currentPage === totalPages)}
         </>
       )}
 
