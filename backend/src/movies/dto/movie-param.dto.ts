@@ -5,4 +5,3 @@ export class MovieParamDto {
   @IsNotEmpty({ message: "imdbID parameter is required and cannot be empty" })
   imdbID!: string;
 }
-

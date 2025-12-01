@@ -7,4 +7,3 @@ export interface OmdbMovieResponse {
   imdbID?: string;
   Poster?: string;
 }
-

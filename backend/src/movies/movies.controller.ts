@@ -34,7 +34,6 @@ export class MoviesController {
 
   @Get("favorites/list")
   async getFavorites(@Query() queryDto: GetFavoritesQueryDto) {
-    const pageNumber = queryDto.page || 1;
-    return this.moviesService.getFavorites(pageNumber);
+    return this.moviesService.getFavorites(queryDto);
   }
 }
